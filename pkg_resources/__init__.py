@@ -795,6 +795,9 @@ class WorkingSet(object):
         # Mapping of requirement to set of distributions that required it;
         # useful for reporting info about conflicts.
         required_by = collections.defaultdict(set)
+	# requirement -> extras that we're looking for from the requirement.
+        # e.g. foo[bar] -> baz would mean that we have {'baz': set(['bar'])}
+	required_extras = collections.defaultdict(set)
 
         while requirements:
             # process dependencies breadth-first
@@ -804,10 +807,16 @@ class WorkingSet(object):
                 continue
             # If the req has a marker, evaluate it -- skipping the req if
             # it evaluates to False.
-            # https://github.com/pypa/setuptools/issues/523
-            _issue_523_bypass = True
-            if not _issue_523_bypass and req.marker and not req.marker.evaluate():
-                    continue
+            active = False
+            if not req.marker:
+                active = True
+            else:
+                for extra in (required_extras[req] or ['']):
+                    if req.marker.evaluate(dict(extra=extra)):
+                        active = True
+                        break
+            if not active:
+		continue
             dist = best.get(req.key)
             if dist is None:
                 # Find the best distribution and add it to the map
@@ -840,6 +849,7 @@ class WorkingSet(object):
             # Register the new requirements needed by req
             for new_requirement in new_requirements:
                 required_by[new_requirement].add(req.project_name)
+                required_extras[new_requirement].update(req.extras)
 
             processed[req] = True
 
